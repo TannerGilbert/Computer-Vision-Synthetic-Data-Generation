@@ -1,0 +1,8 @@
+numpy
+scikit_image
+Shapely
+tqdm
+albumentations
+labelme
+Pillow
+skimage

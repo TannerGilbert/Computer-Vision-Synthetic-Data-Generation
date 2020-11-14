@@ -31,15 +31,4 @@ transform:
     - -0.05
     - 0.05
     value: null
-  - __class_fullname__: albumentations.augmentations.transforms.GridDistortion
-    always_apply: false
-    border_mode: 4
-    distort_limit:
-    - -0.3
-    - 0.3
-    interpolation: 1
-    mask_value: null
-    num_steps: 5
-    p: 0.5
-    value: null
 

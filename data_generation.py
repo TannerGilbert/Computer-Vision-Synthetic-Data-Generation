@@ -15,14 +15,13 @@ import albumentations as A
 
 class SyntheticImageGenerator:
 
-    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, occlude: bool, augmentation_path: str):
+    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, augmentation_path: str):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.image_number = image_number
         self.max_objects_per_image = max_objects_per_image
         self.image_width = image_width
         self.image_height = image_height
-        self.occlude = occlude
         self.zero_padding = 8
         self.augmentation_path = Path(augmentation_path)
 
@@ -78,7 +77,7 @@ class SyntheticImageGenerator:
 
     def _validate_augmentation_path(self):
         # Check if augmentation pipeline file exists
-        if self.augmentation_path.is_file() and self.augmentation_path.suffix == 'yml':
+        if self.augmentation_path.is_file() and self.augmentation_path.suffix == '.yml':
             self.transforms = A.load(self.augmentation_path, data_format='yaml')
         else:
             self.transforms = None
@@ -216,9 +215,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_objects_per_image', type=int, default=3, help='Maximum number of objects per images')
     parser.add_argument('--image_width', type=int, default=640, help='Width of the output images')
     parser.add_argument('--image_height', type=int, default=480, help='Height of the output images')
-    parser.add_argument('--occlude', action='store_true', help="Whether or not the objects can overlap")
 
     args = parser.parse_args()
 
-    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.occlude, args.augmentation_path)
+    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.augmentation_path)
     data_generator.generate_images()
