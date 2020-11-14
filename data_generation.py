@@ -10,11 +10,12 @@ from tqdm import tqdm
 import numpy as np
 from skimage import measure
 from shapely.geometry import Polygon
+import albumentations as A
 
 
 class SyntheticImageGenerator:
 
-    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, occlude: bool):
+    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, occlude: bool, augmentation_path: str):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.image_number = image_number
@@ -23,9 +24,11 @@ class SyntheticImageGenerator:
         self.image_height = image_height
         self.occlude = occlude
         self.zero_padding = 8
+        self.augmentation_path = Path(augmentation_path)
 
         self._validate_input_directory()
         self._validate_output_directory()
+        self._validate_augmentation_path()
 
     def _validate_input_directory(self):
         # Check if directory exists
@@ -72,6 +75,14 @@ class SyntheticImageGenerator:
 
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
+
+    def _validate_augmentation_path(self):
+        # Check if augmentation pipeline file exists
+        if self.augmentation_path.is_file() and self.augmentation_path.suffix == 'yml':
+            self.transforms = A.load(self.augmentation_path, data_format='yaml')
+        else:
+            self.transforms = None
+            warnings.warn(f'{self.augmentation_path} is not a file. No augmentations will be applied')
 
     def _generate_image(self, image_number: int):
         # Randomly choose a background image
@@ -132,11 +143,11 @@ class SyntheticImageGenerator:
             # Perform transformations
             fg_image = self._transform_foreground(fg_image)
 
-            # TODO: Resize foreground if it's bigger than background
-
             # Choose a random x,y position
             max_x_position = composite.size[0] - fg_image.size[0]
             max_y_position = composite.size[1] - fg_image.size[1]
+            assert max_x_position >= 0 and max_y_position >= 0, \
+                f'foreground {fg["image_path"]} is too big ({fg_image.size[0]}x{fg_image.size[1]}) for the requested output size ({self.image_width}x{self.image_height}), check your input parameters'
             foreground_position = (random.randint(0, max_x_position), random.randint(0, max_y_position))
 
             # Create a new foreground image as large as the composite and paste it on top
@@ -185,7 +196,8 @@ class SyntheticImageGenerator:
         return composite, annotations
 
     def _transform_foreground(self, fg_image):
-        # TODO: Add transformations
+        if self.transforms:
+            return Image.fromarray(self.transforms(image=np.array(fg_image))['image'])
         return fg_image
 
     def generate_images(self):
@@ -199,6 +211,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Synthetic Image Generator')
     parser.add_argument('--input_dir', type=str, required=True, help='Path to the input directory. It must contain a backgrounds directory and a foregrounds directory')
     parser.add_argument('--output_dir', type=str, required=True, help='The directory where images and label files will be placed')
+    parser.add_argument('--augmentation_path', type=str, default='transform.yml', help='Path to albumentations augmentation pipeline file')
     parser.add_argument('--image_number', type=int, required=True, help='Number of images to create')
     parser.add_argument('--max_objects_per_image', type=int, default=3, help='Maximum number of objects per images')
     parser.add_argument('--image_width', type=int, default=640, help='Width of the output images')
@@ -207,5 +220,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.occlude)
+    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.occlude, args.augmentation_path)
     data_generator.generate_images()
