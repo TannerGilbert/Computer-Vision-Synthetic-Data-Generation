@@ -15,7 +15,7 @@ import albumentations as A
 
 class SyntheticImageGenerator:
 
-    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, augmentation_path: str):
+    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, augmentation_path: str, scale_foreground_by_background_size: bool):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.image_number = image_number
@@ -24,6 +24,7 @@ class SyntheticImageGenerator:
         self.image_height = image_height
         self.zero_padding = 8
         self.augmentation_path = Path(augmentation_path)
+        self.scale_foreground_by_background_size = scale_foreground_by_background_size
 
         self._validate_input_directory()
         self._validate_output_directory()
@@ -139,6 +140,33 @@ class SyntheticImageGenerator:
 
         for fg in foregrounds:
             fg_image = Image.open(fg['image_path'])
+
+            # Resize foreground (based on https://github.com/basedrhys/cocosynth/commit/f0b5d4d97009a3a070ba9967ff536c7dd71af6ef)
+            if not self.scale_foreground_by_background_size:
+                # Apply random scale
+                scale = random.random() * .5 + .5  # Pick something between .5 and 1
+                new_size = (int(fg_image.size[0] * scale), int(fg_image.size[1] * scale))
+            else:
+                # Scale the foreground based on the size of the resulting image
+                # i.e. ensure that the longest side of the foreground image is
+                # between 25% and 45% of the short side of the background image
+                min_length, max_length = 0.25, 0.45
+                min_bg_len = min(self.image_width, self.image_height)
+
+                rand_length = random.random() * (max_length - min_length) + min_length
+                long_side_len = rand_length * min_bg_len
+                # Scale the longest side of the fg to be between the random length % of the bg
+                if fg_image.size[0] > fg_image.size[1]:
+                    long_side_dif = long_side_len / fg_image.size[0]
+                    short_side_len = long_side_dif * fg_image.size[1]
+                    new_size = (int(long_side_len), int(short_side_len))
+                else:
+                    long_side_dif = long_side_len / fg_image.size[1]
+                    short_side_len = long_side_dif * fg_image.size[0]
+                    new_size = (int(short_side_len), int(long_side_len))
+
+            fg_image = fg_image.resize(new_size, resample=Image.BICUBIC)
+
             # Perform transformations
             fg_image = self._transform_foreground(fg_image)
 
@@ -215,8 +243,9 @@ if __name__ == '__main__':
     parser.add_argument('--max_objects_per_image', type=int, default=3, help='Maximum number of objects per images')
     parser.add_argument('--image_width', type=int, default=640, help='Width of the output images')
     parser.add_argument('--image_height', type=int, default=480, help='Height of the output images')
+    parser.add_argument('--scale_foreground_by_background_size', default=True, action='store_false', help='Whether the foreground images should be scaled based on the background size')
 
     args = parser.parse_args()
 
-    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.augmentation_path)
+    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.augmentation_path, args.scale_foreground_by_background_size)
     data_generator.generate_images()

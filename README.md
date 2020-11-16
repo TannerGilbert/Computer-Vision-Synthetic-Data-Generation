@@ -63,13 +63,19 @@ optional arguments:
                         Height of the output images
 ```
  
- Example:
+Example:
  `python data_generation.py --input_dir input/ --output_dir output/ --image_number 50`
  
- ## Converting output into other formats
+## Converting output into other formats
  
- If the LabelMe format doesn't work for you, you can convert the data into another format.
+If the LabelMe format doesn't work for you, you can convert the data into another format.
  
- ### Convert to COCO
+### Convert to COCO
  
- You can convert the JSON files created by labelme to COCO using the [labelme2coco.py](https://github.com/Tony607/labelme2coco/blob/master/labelme2coco.py) file created by Github user [Tony607](https://github.com/Tony607).
+You can convert the JSON files created by labelme to COCO using the [labelme2coco.py](https://github.com/Tony607/labelme2coco/blob/master/labelme2coco.py) file created by Github user [Tony607](https://github.com/Tony607).
+ 
+## Inspired by / Based on
+
+- [cocosynth](https://github.com/akTwelve/cocosynth) by [Adam Kelly](https://github.com/akTwelve)
+- [cocosynth fork](https://github.com/basedrhys/cocosynth) by [Rhys Compton](https://github.com/basedrhys)
+- [syndata-generation](https://github.com/debidatta/syndata-generation) by [debidatta](https://github.com/debidatta)
