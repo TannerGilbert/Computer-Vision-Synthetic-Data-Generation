@@ -11,6 +11,8 @@ import numpy as np
 from skimage import measure
 from shapely.geometry import Polygon
 import albumentations as A
+import multiprocessing
+from joblib import Parallel, delayed
 
 
 class SyntheticImageGenerator:
@@ -353,8 +355,7 @@ class SyntheticImageGenerator:
         return fg_image
 
     def generate_images(self):
-        for i in tqdm(range(1, self.image_number + 1)):
-            self._generate_image(i)
+        Parallel(n_jobs=multiprocessing.cpu_count())(delayed(self._generate_image)(i) for i in tqdm(range(1, self.image_number + 1)))
 
 
 if __name__ == '__main__':
