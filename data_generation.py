@@ -13,11 +13,12 @@ from shapely.geometry import Polygon
 import albumentations as A
 import multiprocessing
 from joblib import Parallel, delayed
+from typing import List
 
 
 class SyntheticImageGenerator:
 
-    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, augmentation_path: str, scale_foreground_by_background_size: bool, avoid_collisions: bool):
+    def __init__(self, input_dir: str, output_dir: str, image_number: int, max_objects_per_image: int, image_width: int, image_height: int, augmentation_path: str, scale_foreground_by_background_size: bool, scaling_factors: List[int], avoid_collisions: bool, parallelize: bool):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.image_number = image_number
@@ -27,7 +28,9 @@ class SyntheticImageGenerator:
         self.zero_padding = 8
         self.augmentation_path = Path(augmentation_path)
         self.scale_foreground_by_background_size = scale_foreground_by_background_size
+        self.scaling_factors = scaling_factors
         self.avoid_collisions = avoid_collisions
+        self.parallelize = parallelize
 
         self._validate_input_directory()
         self._validate_output_directory()
@@ -153,12 +156,9 @@ class SyntheticImageGenerator:
                 new_size = (int(fg_image.size[0] * scale), int(fg_image.size[1] * scale))
             else:
                 # Scale the foreground based on the size of the resulting image
-                # i.e. ensure that the longest side of the foreground image is
-                # between 25% and 45% of the short side of the background image
-                min_length, max_length = 0.25, 0.45
                 min_bg_len = min(self.image_width, self.image_height)
 
-                rand_length = random.random() * (max_length - min_length) + min_length
+                rand_length = random.random() * (self.scaling_factors[1] - self.scaling_factors[0]) + self.scaling_factors[0]
                 long_side_len = rand_length * min_bg_len
                 # Scale the longest side of the fg to be between the random length % of the bg
                 if fg_image.size[0] > fg_image.size[1]:
@@ -262,21 +262,22 @@ class SyntheticImageGenerator:
 
         return composite, annotations
 
-    def _get_point_to_move_from(self, colliding_centroids):
-        '''
+    @staticmethod
+    def _get_point_to_move_from(colliding_centroids):
+        """
         Average all the centroid locations that the fg was colliding with
         This gives a point for the fg to move away from
         input: array of centroids -> [(200, 100), (50, 20), ...]
-        '''
+        """
         return np.mean(colliding_centroids, 0)
 
     def _is_colliding(self, fg_rect, fg_rect_list):
-        '''
+        """
         Check if the current foreground object is colliding with any foregrounds
         we've placed on the image already. The overlap threshold controls how much overlap
         of the rectangles is allowed. The overlap is a proportion of the total area of this
         foreground object, as opposed to an absolute value
-        '''
+        """
         overlap_thresh = 0.3
 
         colliding_centroids = []
@@ -301,13 +302,14 @@ class SyntheticImageGenerator:
         else:
             return self._get_point_to_move_from(colliding_centroids)
 
-    def _get_new_centroid_pos(self, pt_a, pt_b, step_size):
-        '''
+    @staticmethod
+    def _get_new_centroid_pos(pt_a, pt_b, step_size):
+        """
         https://math.stackexchange.com/questions/175896/finding-a-point-along-a-line-a-certain-distance-away-from-another-point
         Given the point to move from (pt_a), and our current centroid (pt_b),
         move further away along the line i.e.:
         a -------- b --<step_size>-- new_point
-        '''
+        """
         v = np.subtract(pt_b, pt_a)
         norm_v = v / np.linalg.norm(v)
 
@@ -315,10 +317,11 @@ class SyntheticImageGenerator:
         # print("Moving from {} to {}".format(pt_b, new_point))
         return new_point
 
-    def _get_rect_position(self, centroid, fg_image):
-        '''
+    @staticmethod
+    def _get_rect_position(centroid, fg_image):
+        """
         Convert a centroid to the corresponding rectangle, given a foreground image
-        '''
+        """
         width, height = fg_image.size
         x1 = centroid[0] - (width / 2)
         y1 = centroid[1] - (height / 2)
@@ -326,21 +329,23 @@ class SyntheticImageGenerator:
         y2 = centroid[1] + (height / 2)
         return [x1, y1, x2, y2]
 
-    def _visited_point_before(self, coll_pt, coll_pts):
-        '''
+    @staticmethod
+    def _visited_point_before(coll_pt, coll_pts):
+        """
         Check if we've visited this point before.
         Stops collision avoidance from getting stuck in between a group of points
-        '''
+        """
         for pt in coll_pts:
             if coll_pt[0] == pt[0] and coll_pt[1] == pt[1]:
                 return True
 
         return False
 
-    def _outside_img(self, img, fg_rect):
-        '''
+    @staticmethod
+    def _outside_img(img, fg_rect):
+        """
         Don't paste the foreground if the centroid is outside the image
-        '''
+        """
         curr_centroid_x = int((fg_rect[0] + fg_rect[2]) / 2)
         curr_centroid_y = int((fg_rect[1] + fg_rect[3]) / 2)
 
@@ -355,7 +360,11 @@ class SyntheticImageGenerator:
         return fg_image
 
     def generate_images(self):
-        Parallel(n_jobs=multiprocessing.cpu_count())(delayed(self._generate_image)(i) for i in tqdm(range(1, self.image_number + 1)))
+        if self.parallelize:
+            Parallel(n_jobs=multiprocessing.cpu_count())(delayed(self._generate_image)(i) for i in tqdm(range(1, self.image_number + 1)))
+        else:
+            for i in tqdm(range(1, self.image_number + 1)):
+                self._generate_image(i)
 
 
 if __name__ == '__main__':
@@ -370,9 +379,11 @@ if __name__ == '__main__':
     parser.add_argument('--image_width', type=int, default=640, help='Width of the output images')
     parser.add_argument('--image_height', type=int, default=480, help='Height of the output images')
     parser.add_argument('--scale_foreground_by_background_size', default=True, action='store_false', help='Whether the foreground images should be scaled based on the background size (default=true)')
+    parser.add_argument('--scaling_factors', type=float, nargs=2, default=(0.25, 0.5), help='Min and Max percentage size of the short side of the background image')
     parser.add_argument('--avoid_collisions', default=True, action='store_false', help='Whether or not to avoid collisions (default=true)')
+    parser.add_argument('--parallelize', default=False, action='store_true', help='Whether or not to use multiple cores (default=false)')
 
     args = parser.parse_args()
 
-    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.augmentation_path, args.scale_foreground_by_background_size, args.avoid_collisions)
+    data_generator = SyntheticImageGenerator(args.input_dir, args.output_dir, args.image_number, args.max_objects_per_image, args.image_width, args.image_height, args.augmentation_path, args.scale_foreground_by_background_size, args.scaling_factors, args.avoid_collisions, args.parallelize)
     data_generator.generate_images()
